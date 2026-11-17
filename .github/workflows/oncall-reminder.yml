@@ -6,6 +6,11 @@ on:
     # The gate step only proceeds when it is 08:00 in America/Chicago.
     - cron: "0 13,14 * * *"
   workflow_dispatch:
+    inputs:
+      force:
+        description: "Send the reminder now, ignoring the 8 AM gate"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -32,7 +37,7 @@ jobs:
         run: echo "hour=$(TZ=America/Chicago date +%H)" >> "$GITHUB_OUTPUT"
 
       - name: Send on-call reminder
-        if: steps.gate.outputs.hour == '08'
+        if: steps.gate.outputs.hour == '08' || inputs.force == true
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
