@@ -36,6 +36,16 @@ jobs:
         id: gate
         run: echo "hour=$(TZ=America/Chicago date +%H)" >> "$GITHUB_OUTPUT"
 
+      - name: Check secrets are present
+        if: steps.gate.outputs.hour == '08' || inputs.force == true
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+        run: |
+          [ -n "$GEMINI_API_KEY" ] && echo "GEMINI_API_KEY: set" || echo "GEMINI_API_KEY: MISSING"
+          [ -n "$SLACK_BOT_TOKEN" ] && echo "SLACK_BOT_TOKEN: set" || echo "SLACK_BOT_TOKEN: MISSING"
+          [ -n "$GEMINI_API_KEY" ] && [ -n "$SLACK_BOT_TOKEN" ]
+
       - name: Send on-call reminder
         if: steps.gate.outputs.hour == '08' || inputs.force == true
         env:
