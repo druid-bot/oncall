@@ -1,6 +1,6 @@
 """Daily on-call reminder runner for GitHub Actions.
 
-Decodes the newest schedule picture in #schedule-picture with the Mistral
+Decodes the newest schedule picture in #schedule-picture with the Gemini
 vision API and DMs raptor today's and tomorrow's coverage. Reuses the pure
 logic in worker/schedule.py; only I/O lives here.
 """
@@ -21,7 +21,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from worker.schedule import (  # noqa: E402
     DECODE_INSTRUCTIONS,
-    VISION_MODEL,
     build_reminder_message,
     month_label,
     parse_decoded_schedule,
@@ -29,11 +28,12 @@ from worker.schedule import (  # noqa: E402
 )
 
 SLACK_API_BASE = "https://slack.com/api"
-MISTRAL_API_BASE = "https://api.mistral.ai/v1"
+GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 UPLOAD_CHANNEL_ID = "C0CJECM9BSP"
 REMINDER_CHANNEL_ID = "U0CJE5P5RPD"
 CLINIC_TZ = ZoneInfo("America/Chicago")
 HISTORY_LIMIT = 50
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 
 
 def _slack_headers() -> dict[str, str]:
@@ -79,30 +79,26 @@ def download_image(url: str) -> bytes:
     return response.content
 
 
-def decode_image(image_b64: str, month: str) -> dict[str, Any]:
-    api_key = os.environ["MISTRAL_API_KEY"]
+def decode_image(image_bytes: bytes, mime_type: str, month: str) -> dict[str, Any]:
     response = httpx.post(
-        f"{MISTRAL_API_BASE}/chat/completions",
-        headers={"Authorization": f"Bearer {api_key}"},
+        f"{GEMINI_API_BASE}/models/{GEMINI_MODEL}:generateContent",
+        headers={"x-goog-api-key": os.environ["GEMINI_API_KEY"]},
         json={
-            "model": VISION_MODEL,
-            "temperature": 0.0,
-            "messages": [
+            "contents": [
                 {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": DECODE_INSTRUCTIONS.format(month_label=month)},
-                        {"type": "image_url", "image_url": f"data:image/png;base64,{image_b64}"},
-                    ],
+                    "parts": [
+                        {"text": DECODE_INSTRUCTIONS.format(month_label=month)},
+                        {"inline_data": {"mime_type": mime_type, "data": base64.b64encode(image_bytes).decode("ascii")}},
+                    ]
                 }
             ],
+            "generationConfig": {"temperature": 0.0},
         },
         timeout=180.0,
     )
     response.raise_for_status()
-    content = response.json()["choices"][0]["message"]["content"]
-    if isinstance(content, list):
-        content = "".join(part.get("text", "") for part in content)
+    parts = response.json()["candidates"][0]["content"]["parts"]
+    content = "".join(part.get("text", "") for part in parts)
     return parse_decoded_schedule(content or "")
 
 
@@ -128,7 +124,7 @@ def main() -> int:
         return 0
 
     content = download_image(image_ref["url_private"])
-    schedule = decode_image(base64.b64encode(content).decode("ascii"), month_label(now))
+    schedule = decode_image(content, image_ref.get("mimetype", "image/png"), month_label(now))
     message = build_reminder_message(schedule, now)
     slack_post("chat.postMessage", {"channel": REMINDER_CHANNEL_ID, "text": message})
     print("reminder sent")

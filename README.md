@@ -6,7 +6,7 @@ Daily clinic on-call reminders, decoded from a schedule picture posted to Slack.
 
 1. Upload the month's scanned on-call calendar picture to the `#schedule-picture` Slack channel.
 2. A GitHub Actions cron job (`.github/workflows/oncall-reminder.yml`) runs at 8:00 AM `America/Chicago` every day.
-3. Each run reads the newest image in `#schedule-picture`, decodes it with the Mistral vision API using the oncall-schedule-reader legend, and DMs raptor today's and tomorrow's coverage.
+3. Each run reads the newest image in `#schedule-picture`, decodes it with the Gemini vision API using the oncall-schedule-reader legend, and DMs raptor today's and tomorrow's coverage.
 
 Decoding legend (from the oncall-schedule-reader skill):
 
@@ -23,7 +23,7 @@ Decoding legend (from the oncall-schedule-reader skill):
 | Reminder recipient | raptor DM (`U0CJE5P5RPD`) |
 | Reminder time | 08:00 daily, `America/Chicago` |
 | Slack credential | GitHub secret `SLACK_BOT_TOKEN` (scopes: `channels:history`, `files:read`, `chat:write`, `im:write`) |
-| Mistral credential | GitHub secret `MISTRAL_API_KEY` |
+| Vision decode | GitHub secret `GEMINI_API_KEY` (free key from [aistudio.google.com/apikey](https://aistudio.google.com/apikey)); model defaults to `gemini-2.5-flash`, override with the `GEMINI_MODEL` env var |
 
 ## Layout
 
@@ -44,7 +44,7 @@ uv run pytest
 
 ```bash
 export SLACK_BOT_TOKEN=xoxb-...
-export MISTRAL_API_KEY=...
+export GEMINI_API_KEY=...
 python scripts/daily_reminder.py
 ```
 

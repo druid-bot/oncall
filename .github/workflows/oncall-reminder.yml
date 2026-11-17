@@ -34,6 +34,6 @@ jobs:
       - name: Send on-call reminder
         if: steps.gate.outputs.hour == '08'
         env:
-          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
         run: python scripts/daily_reminder.py
