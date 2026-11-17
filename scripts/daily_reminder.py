@@ -33,7 +33,59 @@ UPLOAD_CHANNEL_ID = "C0CJECM9BSP"
 REMINDER_CHANNEL_ID = "U0CJE5P5RPD"
 CLINIC_TZ = ZoneInfo("America/Chicago")
 HISTORY_LIMIT = 50
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "")
+
+_EXCLUDED_MODEL_WORDS = ("image", "embed", "tts", "live", "audio", "video", "aqa", "veo", "imagen")
+
+
+def _model_version(name: str) -> tuple[int, ...]:
+    digits = "".join(ch if ch.isdigit() else " " for ch in name)
+    parts = [int(p) for p in digits.split()]
+    return tuple(parts) if parts else (0,)
+
+
+def _pick_model(models: list[str]) -> str:
+    usable = [
+        m
+        for m in models
+        if m.startswith("gemini")
+        and "flash" in m
+        and "lite" not in m
+        and not any(w in m for w in _EXCLUDED_MODEL_WORDS)
+    ]
+    if not usable:
+        raise RuntimeError(
+            f"No Gemini flash model with generateContent found. Available: {', '.join(models[:30])}"
+        )
+    if "gemini-flash-latest" in usable:
+        return "gemini-flash-latest"
+    return max(usable, key=_model_version)
+
+
+def gemini_model() -> str:
+    """Return the pinned model, or discover a current one from Google's list."""
+    if GEMINI_MODEL:
+        return GEMINI_MODEL
+    models: list[str] = []
+    page_token = ""
+    for _ in range(5):
+        response = httpx.get(
+            f"{GEMINI_API_BASE}/models",
+            headers={"x-goog-api-key": os.environ["GEMINI_API_KEY"]},
+            params={"pageSize": 100, **({"pageToken": page_token} if page_token else {})},
+            timeout=30.0,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        models.extend(
+            m["name"].split("/", 1)[1]
+            for m in payload.get("models", [])
+            if "generateContent" in (m.get("supportedGenerationMethods") or [])
+        )
+        page_token = payload.get("nextPageToken", "")
+        if not page_token:
+            break
+    return _pick_model(models)
 
 
 def _slack_headers() -> dict[str, str]:
@@ -80,8 +132,9 @@ def download_image(url: str) -> bytes:
 
 
 def decode_image(image_bytes: bytes, mime_type: str, month: str) -> dict[str, Any]:
+    model = gemini_model()
     response = httpx.post(
-        f"{GEMINI_API_BASE}/models/{GEMINI_MODEL}:generateContent",
+        f"{GEMINI_API_BASE}/models/{model}:generateContent",
         headers={"x-goog-api-key": os.environ["GEMINI_API_KEY"]},
         json={
             "contents": [
@@ -96,7 +149,10 @@ def decode_image(image_bytes: bytes, mime_type: str, month: str) -> dict[str, An
         },
         timeout=180.0,
     )
-    response.raise_for_status()
+    if response.status_code != 200:
+        raise RuntimeError(
+            f"Gemini {model} failed ({response.status_code}): {response.text[:300]}"
+        )
     parts = response.json()["candidates"][0]["content"]["parts"]
     content = "".join(part.get("text", "") for part in parts)
     return parse_decoded_schedule(content or "")
