@@ -21,6 +21,29 @@ WEEKDAY_NAMES = [
     "Sunday",
 ]
 
+VISION_MODEL = "pixtral-large-latest"
+
+DECODE_INSTRUCTIONS = """You are decoding a scanned monthly on-call calendar for a clinic.
+The calendar month is {month_label}.
+
+Legend:
+- Circled or parenthesized initials, e.g. (A): that person is on clinic call 8am-5pm that day.
+- Initials with dashes, e.g. -T-: that person is off / on vacation that day.
+- SC-XX entries, e.g. SC-BKN: shared call. A day may have several.
+- Saturdays: the circled person is on call 8am-5pm.
+- Plain (uncircled, undashed) initials are regular schedule entries; list them under "regular".
+- Cell notes such as "Clinic Closed Thanksgiving" or "Daylight Snow" go in "notes".
+- An empty cell means no special coverage is listed.
+
+Output STRICT JSON only, with no markdown fences and no commentary:
+{{"month": "YYYY-MM", "days": {{"<day-of-month>": {{"clinic_call": "", "shared_call": [], "off": [], "regular": [], "notes": "", "unreadable": false}}}}}}
+
+Rules:
+- Use initials exactly as written; never invent people or coverage.
+- Use "" / [] when a field is absent.
+- Set "unreadable": true when a cell cannot be read confidently.
+- Include every day of the month shown on the calendar."""
+
 
 def pick_latest_schedule_image(messages: list[dict[str, Any]]) -> dict[str, Any] | None:
     """Return a reference to the newest image file posted in the channel.

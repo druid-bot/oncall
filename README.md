@@ -5,8 +5,8 @@ Daily clinic on-call reminders, decoded from a schedule picture posted to Slack.
 ## How it works
 
 1. Upload the month's scanned on-call calendar picture to the `#schedule-picture` Slack channel.
-2. The `oncall-daily-reminder` workflow runs every day at 8:00 AM `America/Chicago`.
-3. Each run reads the newest image in `#schedule-picture`, decodes it with a vision model using the [oncall-schedule-reader](https://github.com/druid-bot/oncall) legend, and DMs raptor today's and tomorrow's coverage.
+2. A GitHub Actions cron job (`.github/workflows/oncall-reminder.yml`) runs at 8:00 AM `America/Chicago` every day.
+3. Each run reads the newest image in `#schedule-picture`, decodes it with the Mistral vision API using the oncall-schedule-reader legend, and DMs raptor today's and tomorrow's coverage.
 
 Decoding legend (from the oncall-schedule-reader skill):
 
@@ -22,16 +22,15 @@ Decoding legend (from the oncall-schedule-reader skill):
 | Upload channel | `#schedule-picture` (`C0CJECM9BSP`) |
 | Reminder recipient | raptor DM (`U0CJE5P5RPD`) |
 | Reminder time | 08:00 daily, `America/Chicago` |
-| Slack credential | workspace secret `SLACK_BOT_TOKEN`, bound to env `SLACK_BOT_TOKEN` |
-
-The Slack bot token needs `channels:history`, `files:read`, `im:write` (or `chat:write`), and `chat:write` scopes.
+| Slack credential | GitHub secret `SLACK_BOT_TOKEN` (scopes: `channels:history`, `files:read`, `chat:write`, `im:write`) |
+| Mistral credential | GitHub secret `MISTRAL_API_KEY` |
 
 ## Layout
 
-- `src/worker/workflows/oncall.py` — workflow and activities
-- `src/worker/schedule.py` — pure decode/format helpers
-- `src/worker/entrypoints/worker.py` — worker entrypoint
-- `deploy/docker/Dockerfile.worker` — managed deployment image
+- `.github/workflows/oncall-reminder.yml` — daily 8 AM Central cron (with DST gate) and manual `workflow_dispatch`
+- `scripts/daily_reminder.py` — standalone runner used by Actions
+- `src/worker/workflows/oncall.py` — Mistral Workflow definition (optional managed-deployment path)
+- `src/worker/schedule.py` — pure decode/format helpers shared by both runners
 - `tests/` — unit and workflow tests
 
 ## Development
@@ -41,7 +40,18 @@ uv sync
 uv run pytest
 ```
 
+## Running it by hand
+
+```bash
+export SLACK_BOT_TOKEN=xoxb-...
+export MISTRAL_API_KEY=...
+python scripts/daily_reminder.py
+```
+
+To test the automation immediately, run the `oncall-daily-reminder` workflow from the repository's **Actions** tab (`Run workflow`).
+
 ## Deployment
 
-Managed deployment name: `oncall-worker`. Deploys build from this repository with
-`dockerfile_path=deploy/docker/Dockerfile.worker`.
+No Mistral managed deployment is required: GitHub Actions hosts the schedule. The repository also
+contains a worker image (`deploy/docker/Dockerfile.worker`) if you later want to serve the
+`oncall-daily-reminder` Mistral Workflow from a managed or self-hosted deployment.

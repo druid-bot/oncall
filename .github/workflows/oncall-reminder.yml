@@ -1,0 +1,39 @@
+name: oncall-daily-reminder
+
+on:
+  schedule:
+    # 13:00 UTC = 8:00 AM CDT (summer), 14:00 UTC = 8:00 AM CST (winter).
+    # The gate step only proceeds when it is 08:00 in America/Chicago.
+    - cron: "0 13,14 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: oncall-daily-reminder
+  cancel-in-progress: false
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install httpx
+
+      - name: Check it is 8 AM Central
+        id: gate
+        run: echo "hour=$(TZ=America/Chicago date +%H)" >> "$GITHUB_OUTPUT"
+
+      - name: Send on-call reminder
+        if: steps.gate.outputs.hour == '08'
+        env:
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+        run: python scripts/daily_reminder.py
